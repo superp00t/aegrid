@@ -74,6 +74,9 @@ func Server(c *ServerConfig) http.Handler {
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 func (s *server) provision(rw http.ResponseWriter, r *http.Request) {
