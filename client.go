@@ -31,6 +31,8 @@ func relay(uid etc.UUID, c *ClientConfig) {
 		return
 	}
 
+	conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+
 	go func() {
 		for {
 			_, msg, err := cn.ReadMessage()

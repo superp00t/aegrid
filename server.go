@@ -47,16 +47,17 @@ func Server(c *ServerConfig) http.Handler {
 					yo.Fatal(err)
 				}
 
+				tcpconn.SetReadDeadline(time.Now().Add(20 * time.Second))
+
 				yo.Okf("(%s) Accepting tcp connection from %s\n", k, tcpconn.RemoteAddr())
 
 				uid := etc.GenerateRandomUUID()
 
 				s.connections.Store(uid, tcpconn)
 
-				select {
-				case ch <- uid:
-				case <-time.After(5 * time.Second):
-				}
+				go func(ch chan etc.UUID, uid etc.UUID) {
+					ch <- uid
+				}(ch, uid)
 			}
 		}(key, mapping)
 	}
