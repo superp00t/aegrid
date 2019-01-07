@@ -93,6 +93,15 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+func (s *server) purge(key string, e etc.UUID) {
+	if i, ok := s.listeners.Load(key); ok {
+		u := i.(etc.UUID)
+		if e == u {
+			s.listeners.Delete(key)
+		}
+	}
+}
+
 func (s *server) provision(rw http.ResponseWriter, r *http.Request) {
 	v := mux.Vars(r)
 
@@ -108,6 +117,10 @@ func (s *server) provision(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "no corresponding connection queue", http.StatusInternalServerError)
 		return
 	}
+
+	e := etc.GenerateRandomUUID()
+	s.listeners.Store(v["key"], e)
+	defer s.purge(v["key"], e)
 
 	ch := _ch.(chan etc.UUID)
 
