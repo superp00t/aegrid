@@ -16,6 +16,7 @@ type server struct {
 	c           *ServerConfig
 	connChannel *sync.Map
 	connections *sync.Map
+	listeners   *sync.Map
 }
 
 type ServerConfig struct {
@@ -23,11 +24,17 @@ type ServerConfig struct {
 	Mappings map[string]string `toml:"mappings"`
 }
 
+type connStorage struct {
+	tcp   net.Conn
+	stamp time.Time
+}
+
 func Server(c *ServerConfig) http.Handler {
 	s := new(server)
 	s.c = c
 	s.connChannel = new(sync.Map)
 	s.connections = new(sync.Map)
+	s.listeners = new(sync.Map)
 
 	for key, mapping := range c.Mappings {
 		go func(k, m string) {
@@ -49,11 +56,17 @@ func Server(c *ServerConfig) http.Handler {
 
 				tcpconn.SetReadDeadline(time.Now().Add(20 * time.Second))
 
-				yo.Okf("(%s) Accepting tcp connection from %s\n", k, tcpconn.RemoteAddr())
-
 				uid := etc.GenerateRandomUUID()
 
-				s.connections.Store(uid, tcpconn)
+				if _, ok := s.listeners.Load(k); !ok {
+					yo.Okf("No listeners available for %s\n", k)
+					continue
+				}
+
+				yo.Okf("(%s) Accepting tcp connection from %s\n", k, tcpconn.RemoteAddr())
+				s.connections.Store(uid, connStorage{
+					tcpconn,
+					time.Now()})
 
 				go func(ch chan etc.UUID, uid etc.UUID) {
 					ch <- uid
@@ -112,6 +125,19 @@ func (s *server) provision(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		_cn, ok := s.connections.Load(uid)
+		if !ok {
+			continue
+		}
+
+		cn := _cn.(connStorage)
+
+		// Too old.
+		if time.Since(cn.stamp) > 10*time.Second {
+			yo.Println("connection too old.")
+			continue
+		}
+
 		e := etc.NewBuffer()
 		e.WriteUUID(uid)
 
@@ -143,14 +169,16 @@ func (s *server) bind(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	__cn := _cn.(connStorage)
+
 	_conn, err := upgrader.Upgrade(rw, r, nil)
 	if err != nil {
 		return
 	}
 
-	conn := wsconn{_conn}
+	cn := __cn.tcp
 
-	cn := _cn.(net.Conn)
+	conn := wsconn{_conn}
 
 	go func() {
 		for {
