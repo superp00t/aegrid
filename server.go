@@ -60,6 +60,7 @@ func Server(c *ServerConfig) http.Handler {
 
 				if _, ok := s.listeners.Load(k); !ok {
 					yo.Okf("No listeners available for %s\n", k)
+					tcpconn.Close()
 					continue
 				}
 
